@@ -1,3 +1,5 @@
+NOTE TO ANYONE: this code strictly belongs to the termux package and follows their licensing except for my mods. if theres any doubt as to the rights i defer to them!!
+
 # Termux application
 
 [![Build status](https://github.com/termux/termux-app/workflows/Build/badge.svg)](https://github.com/termux/termux-app/actions)
