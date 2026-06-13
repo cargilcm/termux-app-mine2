@@ -14,39 +14,51 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Hard Refactor Configurations and Variables
+      - name: Inject Natively Decoupled Configuration
         run: |
-          echo "Overriding baseline package identity variables..."
-          # 1. Update the root gradle configurations where package keys are initialized.
-          # This forces all dependent modules to change their root compilation values natively.
+          echo "Injecting clean standalone package identity..."
+          # 1. Update gradle.properties baseline configuration
           find . -type f -name "gradle.properties" -exec sed -i 's/com\.termux/com\.termux\.custom/g' {} +
 
-          echo "Injecting Compiler Layout Placeholders..."
-          # 2. Modify the application build.gradle configuration directly to enforce hard placeholders
-          # This overrides ${TERMUX_PACKAGE_NAME} token processing across libraries during compilation.
-          sed -i '/defaultConfig {/a \        applicationId "com.termux.custom"\n        manifestPlaceholders = [TERMUX_PACKAGE_NAME: "com.termux.custom", termux_app_package_name: "com.termux.custom"]' app/build.gradle
+          echo "Injecting manifest compilation processor..."
+          # 2. Append a build task to app/build.gradle that forcefully modifies the manifest output at compile time.
+          # This strips sharedUserId entirely and appends our custom suffix to all authorities/permissions.
+          cat << 'EOF' >> app/build.gradle
 
-          echo "Removing conflicting sharedUserId attributes..."
-          # 3. Completely drop sharedUserId properties from any manifest configuration trees found
-          find . -type f -name "AndroidManifest.xml" -exec sed -i 's/android:sharedUserId="[^"]*"//g' {} +
-          find . -type f -name "AndroidManifest.xml" -exec sed -i 's/android:sharedUserLabel="[^"]*"//g' {} +
-
-          echo "Decoupling internal authority strings..."
-          # 4. Modify unique settings and account manager provider tags to prevent OS-level collision bugs
-          find . -type f \( -name "AndroidManifest.xml" -o -name "*.java" -o -name "*.kt" \) -exec sed -i 's/"com\.termux\.settings"/"com\.termux\.custom\.settings"/g' {} +
-          find . -type f \( -name "AndroidManifest.xml" -o -name "*.java" -o -name "*.kt" \) -exec sed -i 's/android:authorities="com\.termux\./android:authorities="com\.termux\.custom\./g' {} +
-          find . -type f -name "*.xml" -exec sed -i 's/accountType="com\.termux"/accountType="com\.termux\.custom"/g' {} +
+          android.applicationVariants.all { variant ->
+              variant.outputs.all { output ->
+                  output.processManifestProvider.get().doLast { outputDir ->
+                      def manifestOutDir = outputDir.multiApkManifestOutputDirectory.get().asFile
+                      def manifestFile = new File(manifestOutDir, "AndroidManifest.xml")
+                      if (manifestFile.exists()) {
+                          def contents = manifestFile.getText('UTF-8')
+                          
+                          # Force-strip out sharedUserId entirely to fix the signature/user conflict
+                          contents = contents.replaceAll(/android:sharedUserId="[^"]*"/, "")
+                          contents = contents.replaceAll(/android:sharedUserLabel="[^"]*"/, "")
+                          
+                          # Rename provider authorities and permissions to prevent OS registration collisions
+                          contents = contents.replaceAll("com.termux.settings", "com.termux.custom.settings")
+                          contents = contents.replaceAll("com.termux.fileprovider", "com.termux.custom.fileprovider")
+                          contents = contents.replaceAll("com.termux.authority", "com.termux.custom.authority")
+                          
+                          manifestFile.write(contents, 'UTF-8')
+                      }
+                  }
+              }
+          }
+          EOF
 
           echo "Overriding internal file system environments..."
-          # 5. Route local environment scopes smoothly to its standalone isolated storage layout
+          # 3. Globally route paths to the separate custom app storage sandbox location
           find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.sh" \) -exec sed -i 's/\/data\/data\/com\.termux/\/data\/data\/com\.termux\.custom/g' {} +
 
-          echo "Updating hardcoded runtime constants..."
-          # 6. Adjust companion constant definitions inside core utility files
+          echo "Updating runtime constants..."
+          # 4. Sync code variables with our target environment layout namespaces
           find . -type f \( -name "TermuxConstants.java" -o -name "TermuxConstants.kt" -o -name "termux.properties" \) -exec sed -i 's/"com\.termux"/"com\.termux\.custom"/g' {} +
           find . -type f -name "strings.xml" -exec sed -i 's/>com\.termux</>com\.termux\.custom</g' {} +
 
-          echo "Standalone decoupling completed successfully."
+          echo "Configuration processing completed."
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
