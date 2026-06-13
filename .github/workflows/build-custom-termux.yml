@@ -12,19 +12,24 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Refactor via Build Configuration and Path Overrides
+      - name: Refactor Identifiers and Path Overrides
         run: |
-          echo "Injecting custom standalone application flavor..."
-          # 1. Dynamically append an Application ID Suffix inside the build configuration.
-          # This forces Android to assign the app the separate package identity 'com.termux.custom'
-          # at the OS layer without breaking physical Java/Kotlin namespace directory structures.
+          echo "Applying OS-level package distinction..."
+          # 1. Instruct the build configuration to natively append the suffix
           sed -i '/defaultConfig {/a \        applicationIdSuffix ".custom"' app/build.gradle
 
+          echo "Updating configuration namespaces and manifests..."
+          # 2. Update properties files where package hooks are explicitly declared as hardcoded variables
+          find . -type f \( -name "*.properties" -o -name "*.gradle" -o -name "*.xml" \) -exec sed -i 's/com\.termux\.app/com\.termux\.app\.custom/g' {} +
+
           echo "Overriding internal filesystem environments..."
-          # 2. Globally rewrite hardcoded file system constants.
-          # This maps the app's standard shell execution environment directly onto its isolated 
-          # separate data sandbox layout: /data/data/com.termux.custom
-          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.sh" -o -name "*.properties" \) -exec sed -i 's/\/data\/data\/com\.termux/\/data\/data\/com\.termux\.custom/g' {} +
+          # 3. Globally rewrite hardcoded directory environments to use an isolated sandbox location
+          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.sh" \) -exec sed -i 's/\/data\/data\/com\.termux/\/data\/data\/com\.termux\.custom/g' {} +
+
+          echo "Decoupling shared authority and permission keys..."
+          # 4. Modify explicit authority references so they do not collide with an official installation
+          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" \) -exec sed -i 's/com\.termux\.fileprovider/com\.termux\.custom\.fileprovider/g' {} +
+          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" \) -exec sed -i 's/com\.termux\.authority/com\.termux\.custom\.authority/g' {} +
 
           echo "Standalone adjustments applied successfully."
 
@@ -37,7 +42,6 @@ jobs:
 
       - name: Build Standalone APK with Gradle
         run: |
-          # Use stacktrace flags to capture verbose tracking parameters if warnings trigger
           ./gradlew assembleDebug --stacktrace
 
       - name: Upload Custom APK Artifact
@@ -45,18 +49,3 @@ jobs:
         with:
           name: termux-custom-standalone
           path: app/build/outputs/apk/debug/*.apk
-
-# Keep the artifact upload step you already have, and add this underneath:
-      - name: Create Production Release Tag
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.event_manual == true || github.ref_name == 'main'
-        with:
-          tag_name: "v1.0.0-standalone-${{ github.run_number }}"
-          name: "Standalone Termux Build #${{ github.run_number }}"
-          body: "Automated custom standalone build containing alternative storage environment path routing."
-          draft: false
-          prerelease: false
-          files: |
-            app/build/outputs/apk/debug/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
