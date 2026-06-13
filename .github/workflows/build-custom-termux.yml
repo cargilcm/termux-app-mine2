@@ -12,28 +12,33 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Refactor Identifiers and Fully Decouple Manifest
+      - name: Overwrite Build Properties and Environment Paths
         run: |
-          echo "Applying OS-level package distinction..."
-          # 1. Instruct the build configuration to natively append the suffix
+          echo "Overriding root Gradle package identity configuration..."
+          # 1. Modify the core package configurations in the properties files
+          # This forces the build system to change TERMUX_PACKAGE_NAME and all dependent permissions natively
+          find . -type f -name "gradle.properties" -exec sed -i 's/com\.termux/com\.termux\.custom/g' {} +
+
+          echo "Applying OS-level package suffix..."
+          # 2. Instruct the app module to append the custom package suffix
           sed -i '/defaultConfig {/a \        applicationIdSuffix ".custom"' app/build.gradle
 
-          echo "Removing conflicting sharedUserId boundaries..."
-          # 2. Strip out the sharedUserId property from the manifest so it runs as an isolated security principal
+          echo "Removing conflicting sharedUserId declarations..."
+          # 3. Strip out the sharedUserId property from the manifest template entirely
           find . -type f -name "AndroidManifest.xml" -exec sed -i 's/android:sharedUserId="[^"]*"//g' {} +
           find . -type f -name "AndroidManifest.xml" -exec sed -i 's/android:sharedUserLabel="[^"]*"//g' {} +
 
           echo "Decoupling unique content provider authorities..."
-          # 3. Change hardcoded layout string authorities to prevent OS collisions
+          # 4. Change hardcoded layout string authorities to prevent OS conflicts
           find . -type f \( -name "AndroidManifest.xml" -o -name "*.java" -o -name "*.kt" \) -exec sed -i 's/"com\.termux\.settings"/"com\.termux\.custom\.settings"/g' {} +
           find . -type f \( -name "AndroidManifest.xml" -o -name "*.java" -o -name "*.kt" \) -exec sed -i 's/android:authorities="com\.termux\./android:authorities="com\.termux\.custom\./g' {} +
 
           echo "Overriding internal filesystem environments..."
-          # 4. Globally rewrite hardcoded directory environments to use an isolated sandbox location
-          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.sh" \) -exec sed -i 's/\/data\/data\/com\.termux/\/data\/data\/com\.termux\.custom\/g' {} +
+          # 5. Globally rewrite hardcoded directory environments to use an isolated sandbox location
+          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.sh" \) -exec sed -i 's/\/data\/data\/com\.termux/\/data\/data\/com\.termux\.custom/g' {} +
 
           echo "Isolating runtime package parameters..."
-          # 5. Force update runtime constants and strings layout files
+          # 6. Force update runtime constants, internal java properties, and resource files
           find . -type f \( -name "TermuxConstants.java" -o -name "TermuxConstants.kt" -o -name "termux.properties" \) -exec sed -i 's/"com\.termux"/"com\.termux\.custom"/g' {} +
           find . -type f -name "strings.xml" -exec sed -i 's/>com\.termux</>com\.termux\.custom</g' {} +
 
