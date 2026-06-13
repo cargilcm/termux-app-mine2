@@ -31,6 +31,14 @@ jobs:
           find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" \) -exec sed -i 's/com\.termux\.fileprovider/com\.termux\.custom\.fileprovider/g' {} +
           find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" \) -exec sed -i 's/com\.termux\.authority/com\.termux\.custom\.authority/g' {} +
 
+          echo "Breaking Deeper System-Level Shared ID and Resource Ties..."
+          # 5. Remove or rename sharedUserId so Android treats the app as an independent security principal
+          find . -type f -name "AndroidManifest.xml" -exec sed -i 's/android:sharedUserId="com\.termux"/android:sharedUserId="com\.termux\.custom"/g' {} +
+          
+          # 6. Rewrite Account Authenticator resource declarations to prevent authority registration collisions
+          find . -type f -name "*.xml" -exec sed -i 's/accountType="com\.termux"/accountType="com\.termux\.custom"/g' {} +
+          find . -type f -name "*.xml" -exec sed -i 's/accountType="com\.termux\.auth"/accountType="com\.termux\.custom\.auth"/g' {} +
+
           echo "Standalone adjustments applied successfully."
 
       - name: Set up JDK 17
