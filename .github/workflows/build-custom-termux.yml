@@ -45,3 +45,18 @@ jobs:
         with:
           name: termux-custom-standalone
           path: app/build/outputs/apk/debug/*.apk
+
+# Keep the artifact upload step you already have, and add this underneath:
+      - name: Create Production Release Tag
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_manual == true || github.ref_name == 'main'
+        with:
+          tag_name: "v1.0.0-standalone-${{ github.run_number }}"
+          name: "Standalone Termux Build #${{ github.run_number }}"
+          body: "Automated custom standalone build containing alternative storage environment path routing."
+          draft: false
+          prerelease: false
+          files: |
+            app/build/outputs/apk/debug/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
