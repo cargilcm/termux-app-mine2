@@ -17,7 +17,7 @@ jobs:
           echo "Refactoring package identifiers..."
           # 1. Change the application package names globally
           # EXCLUDE build.gradle, gradle.properties, and gradle wrapper files
-          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.pro" \) -exec sed -i 's/com\.termux/com\.termux\.custom/g' {} +
+          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.pro" \) ! -name "build.gradle" ! -name "build.gradle.kts" -exec sed -i 's/com\.termux/com\.termux\.custom/g' {} +
           
           echo "Refactoring hardcoded filesystem paths..."
           # 2. Change the Unix filesystem environment path structure 
