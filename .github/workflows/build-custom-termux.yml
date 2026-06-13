@@ -39,6 +39,14 @@ jobs:
           find . -type f -name "*.xml" -exec sed -i 's/accountType="com\.termux"/accountType="com\.termux\.custom"/g' {} +
           find . -type f -name "*.xml" -exec sed -i 's/accountType="com\.termux\.auth"/accountType="com\.termux\.custom\.auth"/g' {} +
 
+          echo "Targeting Hardcoded Constant Classes..."
+          # 7. Forcefully update hardcoded package and path strings inside TermuxConstants and utility scripts
+          find . -type f \( -name "TermuxConstants.java" -o -name "TermuxConstants.kt" -o -name "termux.properties" \) -exec sed -i 's/"com\.termux"/"com\.termux\.custom"/g' {} +
+          find . -type f \( -name "TermuxConstants.java" -o -name "TermuxConstants.kt" \) -exec sed -i 's/"com\.termux\.app"/"com\.termux\.app\.custom"/g' {} +
+          
+          # 8. Sanitize string XML values that act as dynamic manifest injectors
+          find . -type f -name "strings.xml" -exec sed -i 's/>com\.termux</>com\.termux\.custom</g' {} +
+
           echo "Standalone adjustments applied successfully."
 
       - name: Set up JDK 17
