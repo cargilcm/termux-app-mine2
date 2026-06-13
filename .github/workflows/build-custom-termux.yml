@@ -25,13 +25,11 @@ jobs:
           
           echo "Refactoring directory structures..."
           # 3. Move the physical Java/Kotlin package directory layout
-          find . -depth -type d -path "*/com/termux" | while read -r dir; do
-            mv "$dir" "$(dirname "$dir")/termux_custom"
-          done
-          find . -depth -type d -path "*/com/termux_custom" | while read -r dir; do
+          find . -depth -type d -path "*/src/*/java/com/termux" -not -path "*/build/*" | while read -r dir; do
             parent="$(dirname "$dir")"
-            mkdir -p "$parent/termux/custom"
-            mv "$dir" "$(dirname "$dir")/termux/custom"
+            mkdir -p "$parent/com/termux/custom"
+            mv "$dir"/* "$parent/com/termux/custom/" 2>/dev/null || true
+            rmdir "$dir" 2>/dev/null || true
           done
 
       - name: Set up JDK 17
