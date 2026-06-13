@@ -1,10 +1,10 @@
 name: Build Custom Standalone Termux
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
-  workflow_dispatch:
-
+    
 jobs:
   build:
     runs-on: ubuntu-latest
