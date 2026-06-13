@@ -13,8 +13,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Refactor Package Name and File Paths
-            run: 
-              echo "Refactoring package identifiers..."
+            run:  echo "Refactoring package identifiers..."
               # 1. Change the application package names globally
               # EXCLUDE build.gradle, gradle.properties, and gradle wrapper files
               find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.pro" \) -exec sed -i 's/com\.termux/com\.termux\.custom/g' {} +
