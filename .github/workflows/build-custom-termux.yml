@@ -14,33 +14,26 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Dynamic API 28 Compiler Injection
+      - name: Dynamic Legacy Target Injection
         run: |
           echo "Overriding baseline workspace configurations..."
           find . -type f -name "gradle.properties" -exec sed -i 's/com\.termux/com\.termux\.custom/g' {} +
 
-          echo "Injecting SDK 28 restrictions directly into existing app module config..."
-          # Instead of erasing build.gradle, we find the android configuration block 
-          # and intercept compile/target options without removing underlying dependencies.
+          echo "Enforcing Target SDK 28 inside app configuration..."
+          # We force targetSdkVersion to 28 but let compileSdkVersion remain high so libraries build.
           if [ -f app/build.gradle ]; then
-              sed -i 's/compileSdkVersion.*/compileSdkVersion 28/g' app/build.gradle
               sed -i 's/targetSdkVersion.*/targetSdkVersion 28/g' app/build.gradle
               sed -i 's/applicationId "com.termux"/applicationId "com.termux.custom"/g' app/build.gradle
           fi
 
-          echo "Injecting Global Project Level Enforcer..."
-          # Ensure submodules inherit the forced 28 target parameter securely
+          echo "Injecting Global Subproject Level Enforcer..."
+          # Lock targetSdkVersion down across any secondary submodules
           cat << 'EOF' >> build.gradle
 
           subprojects {
               afterEvaluate { project ->
                   if (project.hasProperty('android')) {
                       project.android {
-                          compileSdkVersion 28
-                          if (namespace == null) {
-                              // Safeguard to ensure submodules maintain valid AGP namespaces
-                              namespace = project.group.toString()
-                          }
                           defaultConfig {
                               targetSdkVersion 28
                           }
@@ -61,7 +54,7 @@ jobs:
           find . -type f \( -name "TermuxConstants.java" -o -name "TermuxConstants.kt" -o -name "termux.properties" \) -exec sed -i 's/"com\.termux"/"com\.termux\.custom"/g' {} +
           find . -type f -name "strings.xml" -exec sed -i 's/>com\.termux</>com\.termux\.custom</g' {} +
 
-          echo "Compiler parameters completely updated."
+          echo "Compiler execution rules clamped to Runtime API 28."
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
