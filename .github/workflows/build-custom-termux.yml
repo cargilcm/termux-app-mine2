@@ -14,51 +14,22 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Force Decouple and Pure API 28 Bytecode Compilation
+      - name: Dynamic API 28 Compiler Injection
         run: |
           echo "Overriding baseline workspace configurations..."
           find . -type f -name "gradle.properties" -exec sed -i 's/com\.termux/com\.termux\.custom/g' {} +
 
-          echo "Injecting Absolute Compile-Time SDK Constraints with Namespace..."
-          cat << 'EOF' > app/build.gradle
-          apply plugin: 'com.android.application'
+          echo "Injecting SDK 28 restrictions directly into existing app module config..."
+          # Instead of erasing build.gradle, we find the android configuration block 
+          # and intercept compile/target options without removing underlying dependencies.
+          if [ -f app/build.gradle ]; then
+              sed -i 's/compileSdkVersion.*/compileSdkVersion 28/g' app/build.gradle
+              sed -i 's/targetSdkVersion.*/targetSdkVersion 28/g' app/build.gradle
+              sed -i 's/applicationId "com.termux"/applicationId "com.termux.custom"/g' app/build.gradle
+          fi
 
-          android {
-              namespace "com.termux"
-              compileSdkVersion 28
-              buildToolsVersion "28.0.3"
-
-              defaultConfig {
-                  applicationId "com.termux.custom"
-                  minSdkVersion 21
-                  targetSdkVersion 28
-                  versionCode 1
-                  versionName "1.0.0"
-                  
-                  manifestPlaceholders = [
-                      TERMUX_PACKAGE_NAME: "com.termux.custom",
-                      termux_app_package_name: "com.termux.custom"
-                  ]
-              }
-
-              buildTypes {
-                  debug {
-                      minifyEnabled false
-                      debuggable true
-                  }
-              }
-          }
-
-          allprojects {
-              configurations.all {
-                  resolutionStrategy.eachDependency { DependencyResolveDetails details ->
-                      // Keep custom dependency locks level
-                  }
-              }
-          }
-          EOF
-
-          echo "Injecting Global Root Project Level Enforcer..."
+          echo "Injecting Global Project Level Enforcer..."
+          # Ensure submodules inherit the forced 28 target parameter securely
           cat << 'EOF' >> build.gradle
 
           subprojects {
@@ -66,7 +37,10 @@ jobs:
                   if (project.hasProperty('android')) {
                       project.android {
                           compileSdkVersion 28
-                          buildToolsVersion "28.0.3"
+                          if (namespace == null) {
+                              // Safeguard to ensure submodules maintain valid AGP namespaces
+                              namespace = project.group.toString()
+                          }
                           defaultConfig {
                               targetSdkVersion 28
                           }
@@ -87,7 +61,7 @@ jobs:
           find . -type f \( -name "TermuxConstants.java" -o -name "TermuxConstants.kt" -o -name "termux.properties" \) -exec sed -i 's/"com\.termux"/"com\.termux\.custom"/g' {} +
           find . -type f -name "strings.xml" -exec sed -i 's/>com\.termux</>com\.termux\.custom</g' {} +
 
-          echo "Compiler configuration locked to native API 28 compilation."
+          echo "Compiler parameters completely updated."
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
