@@ -1,0 +1,59 @@
+name: Build Custom Standalone Termux
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Refactor Identifiers and Path Overrides
+        run: |
+          echo "Applying OS-level package distinction..."
+          # 1. Instruct the build configuration to natively append the suffix
+          sed -i '/defaultConfig {/a \        applicationIdSuffix ".custom"' app/build.gradle
+
+          echo "Updating configuration namespaces and manifests..."
+          # 2. Update properties files where package hooks are explicitly declared as hardcoded variables
+          find . -type f \( -name "*.properties" -o -name "*.gradle" -o -name "*.xml" \) -exec sed -i 's/com\.termux\.app/com\.termux\.app\.custom/g' {} +
+
+          echo "Overriding internal filesystem environments..."
+          # 3. Globally rewrite hardcoded directory environments to use an isolated sandbox location
+          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.sh" \) -exec sed -i 's/\/data\/data\/com\.termux/\/data\/data\/com\.termux\.custom/g' {} +
+
+          echo "Decoupling shared authority and permission keys..."
+          # 4. Modify explicit authority references so they do not collide with an official installation
+          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" \) -exec sed -i 's/com\.termux\.fileprovider/com\.termux\.custom\.fileprovider/g' {} +
+          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" \) -exec sed -i 's/com\.termux\.authority/com\.termux\.custom\.authority/g' {} +
+
+          echo "Breaking Deeper System-Level Shared ID and Resource Ties..."
+          # 5. Remove or rename sharedUserId so Android treats the app as an independent security principal
+          find . -type f -name "AndroidManifest.xml" -exec sed -i 's/android:sharedUserId="com\.termux"/android:sharedUserId="com\.termux\.custom"/g' {} +
+          
+          # 6. Rewrite Account Authenticator resource declarations to prevent authority registration collisions
+          find . -type f -name "*.xml" -exec sed -i 's/accountType="com\.termux"/accountType="com\.termux\.custom"/g' {} +
+          find . -type f -name "*.xml" -exec sed -i 's/accountType="com\.termux\.auth"/accountType="com\.termux\.custom\.auth"/g' {} +
+
+          echo "Standalone adjustments applied successfully."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'zulu'
+          cache: gradle
+
+      - name: Build Standalone APK with Gradle
+        run: |
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload Custom APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: termux-custom-standalone
+          path: app/build/outputs/apk/debug/*.apk

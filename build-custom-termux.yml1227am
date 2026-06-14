@@ -1,0 +1,78 @@
+name: Build Custom Standalone Termux
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Inject Natively Decoupled Configuration
+        run: |
+          echo "Injecting clean standalone package identity..."
+          # 1. Update gradle.properties baseline configuration
+          find . -type f -name "gradle.properties" -exec sed -i 's/com\.termux/com\.termux\.custom/g' {} +
+
+          echo "Injecting manifest compilation processor..."
+          # 2. Append a build task to app/build.gradle that forcefully modifies the manifest output at compile time.
+          # This strips sharedUserId entirely and appends our custom suffix to all authorities/permissions.
+          cat << 'EOF' >> app/build.gradle
+
+          android.applicationVariants.all { variant ->
+              variant.outputs.all { output ->
+                  output.processManifestProvider.get().doLast { outputDir ->
+                      def manifestOutDir = outputDir.multiApkManifestOutputDirectory.get().asFile
+                      def manifestFile = new File(manifestOutDir, "AndroidManifest.xml")
+                      if (manifestFile.exists()) {
+                          def contents = manifestFile.getText('UTF-8')
+                          
+                          # Force-strip out sharedUserId entirely to fix the signature/user conflict
+                          contents = contents.replaceAll(/android:sharedUserId="[^"]*"/, "")
+                          contents = contents.replaceAll(/android:sharedUserLabel="[^"]*"/, "")
+                          
+                          # Rename provider authorities and permissions to prevent OS registration collisions
+                          contents = contents.replaceAll("com.termux.settings", "com.termux.custom.settings")
+                          contents = contents.replaceAll("com.termux.fileprovider", "com.termux.custom.fileprovider")
+                          contents = contents.replaceAll("com.termux.authority", "com.termux.custom.authority")
+                          
+                          manifestFile.write(contents, 'UTF-8')
+                      }
+                  }
+              }
+          }
+          EOF
+
+          echo "Overriding internal file system environments..."
+          # 3. Globally route paths to the separate custom app storage sandbox location
+          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.sh" \) -exec sed -i 's/\/data\/data\/com\.termux/\/data\/data\/com\.termux\.custom/g' {} +
+
+          echo "Updating runtime constants..."
+          # 4. Sync code variables with our target environment layout namespaces
+          find . -type f \( -name "TermuxConstants.java" -o -name "TermuxConstants.kt" -o -name "termux.properties" \) -exec sed -i 's/"com\.termux"/"com\.termux\.custom"/g' {} +
+          find . -type f -name "strings.xml" -exec sed -i 's/>com\.termux</>com\.termux\.custom</g' {} +
+
+          echo "Configuration processing completed."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'zulu'
+          cache: gradle
+
+      - name: Build Standalone APK with Gradle
+        run: |
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload Custom APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: termux-custom-standalone
+          path: app/build/outputs/apk/debug/*.apk

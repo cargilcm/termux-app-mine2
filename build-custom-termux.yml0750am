@@ -1,0 +1,47 @@
+name: Build Custom Standalone Termux
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Refactor via Build Configuration and Path Overrides
+        run: |
+          echo "Injecting custom standalone application flavor..."
+          # 1. Dynamically append an Application ID Suffix inside the build configuration.
+          # This forces Android to assign the app the separate package identity 'com.termux.custom'
+          # at the OS layer without breaking physical Java/Kotlin namespace directory structures.
+          sed -i '/defaultConfig {/a \        applicationIdSuffix ".custom"' app/build.gradle
+
+          echo "Overriding internal filesystem environments..."
+          # 2. Globally rewrite hardcoded file system constants.
+          # This maps the app's standard shell execution environment directly onto its isolated 
+          # separate data sandbox layout: /data/data/com.termux.custom
+          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.sh" -o -name "*.properties" \) -exec sed -i 's/\/data\/data\/com\.termux/\/data\/data\/com\.termux\.custom/g' {} +
+
+          echo "Standalone adjustments applied successfully."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'zulu'
+          cache: gradle
+
+      - name: Build Standalone APK with Gradle
+        run: |
+          # Use stacktrace flags to capture verbose tracking parameters if warnings trigger
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload Custom APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: termux-custom-standalone
+          path: app/build/outputs/apk/debug/*.apk
