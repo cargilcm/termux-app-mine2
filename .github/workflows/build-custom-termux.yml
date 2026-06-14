@@ -14,22 +14,19 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Programmatic Gradle Core Injection
+      - name: Force Decouple and Hardcode SDK 28 in Final Manifest
         run: |
-          echo "Injecting absolute package and property overrides..."
-          
-          # 1. Force override variables at the top of gradle.properties
+          echo "Overriding baseline workspace configurations..."
           find . -type f -name "gradle.properties" -exec sed -i 's/com\.termux/com\.termux\.custom/g' {} +
 
-          echo "Injecting Compiler Layer Manifest Interceptor..."
-          # 2. Append a clean build task directly to app/build.gradle that intercepts 
-          # the output manifest *after* all plugins and submodules are merged.
-          # This strips sharedUserId entirely and enforces the absolute custom namespace.
+          echo "Injecting absolute SDK 28 and Package Overrides..."
           cat << 'EOF' >> app/build.gradle
 
           android {
               defaultConfig {
                   applicationId "com.termux.custom"
+                  compileSdkVersion 28
+                  targetSdkVersion 28
                   manifestPlaceholders = [
                       TERMUX_PACKAGE_NAME: "com.termux.custom",
                       termux_app_package_name: "com.termux.custom"
@@ -37,6 +34,20 @@ jobs:
               }
           }
 
+          subprojects {
+              afterEvaluate { project ->
+                  if (project.hasProperty('android')) {
+                      project.android {
+                          compileSdkVersion 28
+                          defaultConfig {
+                              targetSdkVersion 28
+                          }
+                      }
+                  }
+              }
+          }
+
+          // Absolute final Manifest Interceptor to purge process boundaries and slam SDK down to 28
           android.applicationVariants.all { variant ->
               variant.outputs.all { output ->
                   output.processManifestProvider.get().doLast { outputDir ->
@@ -45,15 +56,23 @@ jobs:
                       if (manifestFile.exists()) {
                           def contents = manifestFile.getText('UTF-8')
                           
-                          // Strip out sharedUserId so Android treats this app as a distinct security principal
+                          // Strip sharedUser tags
                           contents = contents.replaceAll(/android:sharedUserId="[^"]*"/, "")
                           contents = contents.replaceAll(/android:sharedUserLabel="[^"]*"/, "")
                           
-                          // Globally map system-restricted strings over to the custom namespace
+                          // Decouple authorities and custom permissions
                           contents = contents.replaceAll("com.termux.settings", "com.termux.custom.settings")
                           contents = contents.replaceAll("com.termux.fileprovider", "com.termux.custom.fileprovider")
                           contents = contents.replaceAll("com.termux.authority", "com.termux.custom.authority")
                           contents = contents.replaceAll("com.termux.permission", "com.termux.custom.permission")
+                          
+                          // FORCE INTERCEPT: Forcibly rewrite the uses-sdk tag in the raw text 
+                          // to guarantee Android strips out any modern targetSdkVersion overrides.
+                          if (contents.contains("<uses-sdk")) {
+                              contents = contents.replaceAll(/<uses-sdk[^>]*\/>/, '<uses-sdk android:getCompileSdkVersion="28" android:minSdkVersion="21" android:targetSdkVersion="28" />')
+                          } else {
+                              contents = contents.replace("<application", '<uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />\n    <application')
+                          }
                           
                           manifestFile.write(contents, 'UTF-8')
                       }
@@ -63,15 +82,13 @@ jobs:
           EOF
 
           echo "Overriding internal file system environments..."
-          # 3. Safely map directory hooks to ensure an isolated sandbox storage path
           find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.sh" \) -exec sed -i 's/\/data\/data\/com\.termux/\/data\/data\/com\.termux\.custom/g' {} +
 
-          echo "Updating hardcoded runtime constants..."
-          # 4. Enforce structural text variables inside core code layers
+          echo "Updating runtime constants..."
           find . -type f \( -name "TermuxConstants.java" -o -name "TermuxConstants.kt" -o -name "termux.properties" \) -exec sed -i 's/"com\.termux"/"com\.termux\.custom"/g' {} +
           find . -type f -name "strings.xml" -exec sed -i 's/>com\.termux</>com\.termux\.custom</g' {} +
 
-          echo "Decoupling configuration successfully injected."
+          echo "Hard manifest interceptor configuration ready."
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
