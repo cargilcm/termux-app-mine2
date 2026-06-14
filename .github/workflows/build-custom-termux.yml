@@ -14,68 +14,55 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Inject Native Compile-Time Manifest Overlay
+      - name: Configure Native Project Properties
         run: |
-          echo "Overriding baseline workspace properties..."
+          echo "Updating workspace package identifier..."
           find . -type f -name "gradle.properties" -exec sed -i 's/com\.termux/com\.termux\.custom/g' {} +
 
-          echo "Injecting clean application metadata configurations..."
+          echo "Injecting native SDK 28 flags into the app build configuration..."
+          # This safely configures the application parameters using standard Gradle syntax
           if [ -f app/build.gradle ]; then
               sed -i 's/applicationId "com.termux"/applicationId "com.termux.custom"/g' app/build.gradle
           fi
 
-          echo "Creating native legacy manifest overlay file..."
-          # We create an official manifest block containing ONLY the security waivers.
-          # The compiler will merge this securely, avoiding zip corruption bugs.
-          mkdir -p app/src/standalone/
-          cat << 'EOF' > app/src/standalone/AndroidManifest.xml
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-              package="com.termux.custom">
-              <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
-          </manifest>
-          EOF
+          echo "Injecting comprehensive submodule build enforcer..."
+          # This appends a standard project evaluation block to ensure every dependent library 
+          # targets SDK 28 cleanly at the compiler layer, preventing manifest merger conflicts.
+          cat << 'EOF' >> build.gradle
 
-          echo "Injecting overlay configuration into build pipeline..."
-          cat << 'EOF' >> app/build.gradle
-
-          android {
-              sourceSets {
-                  main {
-                      // Register our custom standalone waiver manifest as a primary compilation overlay
-                      manifest.srcFile 'src/standalone/AndroidManifest.xml'
-                  }
-              }
-          }
-
-          // Force-strip process-sharing identifiers without breaking bytecode signatures
-          android.applicationVariants.all { variant ->
-              variant.outputs.all { output ->
-                  output.processManifestProvider.get().doLast { outputDir ->
-                      def manifestOutDir = outputDir.multiApkManifestOutputDirectory.get().asFile
-                      def manifestFile = new File(manifestOutDir, "AndroidManifest.xml")
-                      if (manifestFile.exists()) {
-                          def contents = manifestFile.getText('UTF-8')
-                          contents = contents.replaceAll(/android:sharedUserId="[^"]*"/, "")
-                          contents = contents.replaceAll(/android:sharedUserLabel="[^"]*"/, "")
-                          contents = contents.replaceAll("com.termux.settings", "com.termux.custom.settings")
-                          contents = contents.replaceAll("com.termux.fileprovider", "com.termux.custom.fileprovider")
-                          contents = contents.replaceAll("com.termux.authority", "com.termux.custom.authority")
-                          contents = contents.replaceAll("com.termux.permission", "com.termux.custom.permission")
-                          manifestFile.write(contents, 'UTF-8')
+          allprojects {
+              subprojects {
+                  afterEvaluate { project ->
+                      if (project.hasProperty('android')) {
+                          project.android {
+                              defaultConfig {
+                                  targetSdkVersion 28
+                              }
+                          }
                       }
                   }
               }
           }
           EOF
 
-          echo "Overriding internal file system environments..."
+          echo "Cleaning conflicting sharing attributes from manifest templates..."
+          find . -type f -name "AndroidManifest.xml" -exec sed -i 's/android:sharedUserId="[^"]*"//g' {} +
+          find . -type f -name "AndroidManifest.xml" -exec sed -i 's/android:sharedUserLabel="[^"]*"//g' {} +
+
+          echo "Updating internal package string alignments..."
+          find . -type f -name "AndroidManifest.xml" -exec sed -i 's/com\.termux\.settings/com\.termux\.custom\.settings/g' {} +
+          find . -type f -name "AndroidManifest.xml" -exec sed -i 's/com\.termux\.fileprovider/com\.termux\.custom\.fileprovider/g' {} +
+          find . -type f -name "AndroidManifest.xml" -exec sed -i 's/com\.termux\.authority/com\.termux\.custom\.authority/g' {} +
+          find . -type f -name "AndroidManifest.xml" -exec sed -i 's/com\.termux\.permission/com\.termux\.custom\.permission/g' {} +
+
+          echo "Overriding internal file system path strings..."
           find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.sh" \) -exec sed -i 's/\/data\/data\/com\.termux/\/data\/data\/com\.termux\.custom/g' {} +
 
-          echo "Updating runtime constants..."
+          echo "Updating runtime application constants..."
           find . -type f \( -name "TermuxConstants.java" -o -name "TermuxConstants.kt" -o -name "termux.properties" \) -exec sed -i 's/"com\.termux"/"com\.termux\.custom"/g' {} +
           find . -type f -name "strings.xml" -exec sed -i 's/>com\.termux</>com\.termux\.custom</g' {} +
 
-          echo "Overlay build engine preparation complete."
+          echo "Native project alignment configuration ready."
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
