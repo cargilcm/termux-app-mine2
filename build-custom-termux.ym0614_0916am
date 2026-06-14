@@ -1,0 +1,108 @@
+name: Build Custom Standalone Termux
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Force Decouple and Hardcode SDK 28 in Final Manifest
+        run: |
+          echo "Overriding baseline workspace configurations..."
+          find . -type f -name "gradle.properties" -exec sed -i 's/com\.termux/com\.termux\.custom/g' {} +
+
+          echo "Injecting absolute SDK 28 and Package Overrides..."
+          cat << 'EOF' >> app/build.gradle
+
+          android {
+              defaultConfig {
+                  applicationId "com.termux.custom"
+                  compileSdkVersion 28
+                  targetSdkVersion 28
+                  manifestPlaceholders = [
+                      TERMUX_PACKAGE_NAME: "com.termux.custom",
+                      termux_app_package_name: "com.termux.custom"
+                  ]
+              }
+          }
+
+          subprojects {
+              afterEvaluate { project ->
+                  if (project.hasProperty('android')) {
+                      project.android {
+                          compileSdkVersion 28
+                          defaultConfig {
+                              targetSdkVersion 28
+                          }
+                      }
+                  }
+              }
+          }
+
+          // Absolute final Manifest Interceptor to purge process boundaries and slam SDK down to 28
+          android.applicationVariants.all { variant ->
+              variant.outputs.all { output ->
+                  output.processManifestProvider.get().doLast { outputDir ->
+                      def manifestOutDir = outputDir.multiApkManifestOutputDirectory.get().asFile
+                      def manifestFile = new File(manifestOutDir, "AndroidManifest.xml")
+                      if (manifestFile.exists()) {
+                          def contents = manifestFile.getText('UTF-8')
+                          
+                          // Strip sharedUser tags
+                          contents = contents.replaceAll(/android:sharedUserId="[^"]*"/, "")
+                          contents = contents.replaceAll(/android:sharedUserLabel="[^"]*"/, "")
+                          
+                          // Decouple authorities and custom permissions
+                          contents = contents.replaceAll("com.termux.settings", "com.termux.custom.settings")
+                          contents = contents.replaceAll("com.termux.fileprovider", "com.termux.custom.fileprovider")
+                          contents = contents.replaceAll("com.termux.authority", "com.termux.custom.authority")
+                          contents = contents.replaceAll("com.termux.permission", "com.termux.custom.permission")
+                          
+                          // FORCE INTERCEPT: Forcibly rewrite the uses-sdk tag in the raw text 
+                          // to guarantee Android strips out any modern targetSdkVersion overrides.
+                          if (contents.contains("<uses-sdk")) {
+                              contents = contents.replaceAll(/<uses-sdk[^>]*\/>/, '<uses-sdk android:getCompileSdkVersion="28" android:minSdkVersion="21" android:targetSdkVersion="28" />')
+                          } else {
+                              contents = contents.replace("<application", '<uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />\n    <application')
+                          }
+                          
+                          manifestFile.write(contents, 'UTF-8')
+                      }
+                  }
+              }
+          }
+          EOF
+
+          echo "Overriding internal file system environments..."
+          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.sh" \) -exec sed -i 's/\/data\/data\/com\.termux/\/data\/data\/com\.termux\.custom/g' {} +
+
+          echo "Updating runtime constants..."
+          find . -type f \( -name "TermuxConstants.java" -o -name "TermuxConstants.kt" -o -name "termux.properties" \) -exec sed -i 's/"com\.termux"/"com\.termux\.custom"/g' {} +
+          find . -type f -name "strings.xml" -exec sed -i 's/>com\.termux</>com\.termux\.custom</g' {} +
+
+          echo "Hard manifest interceptor configuration ready."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'zulu'
+          cache: gradle
+
+      - name: Build Standalone APK with Gradle
+        run: |
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload Custom APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: termux-custom-standalone
+          path: app/build/outputs/apk/debug/*.apk

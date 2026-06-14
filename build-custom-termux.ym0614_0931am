@@ -1,0 +1,74 @@
+- name: Force Decouple and Pure API 28 Bytecode Compilation
+        run: |
+          echo "Overriding baseline workspace configurations..."
+          find . -type f -name "gradle.properties" -exec sed -i 's/com\.termux/com\.termux\.custom/g' {} +
+
+          echo "Injecting Absolute Compile-Time SDK Constraints with Namespace..."
+          cat << 'EOF' > app/build.gradle
+          apply plugin: 'com.android.application'
+
+          android {
+              namespace "com.termux"
+              compileSdkVersion 28
+              buildToolsVersion "28.0.3"
+
+              defaultConfig {
+                  applicationId "com.termux.custom"
+                  minSdkVersion 21
+                  targetSdkVersion 28
+                  versionCode 1
+                  versionName "1.0.0"
+                  
+                  manifestPlaceholders = [
+                      TERMUX_PACKAGE_NAME: "com.termux.custom",
+                      termux_app_package_name: "com.termux.custom"
+                  ]
+              }
+
+              buildTypes {
+                  debug {
+                      minifyEnabled false
+                      debuggable true
+                  }
+              }
+          }
+
+          allprojects {
+              configurations.all {
+                  resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+                      // Keep custom dependency locks level
+                  }
+              }
+          }
+          EOF
+
+          echo "Injecting Global Root Project Level Enforcer..."
+          cat << 'EOF' >> build.gradle
+
+          subprojects {
+              afterEvaluate { project ->
+                  if (project.hasProperty('android')) {
+                      project.android {
+                          compileSdkVersion 28
+                          buildToolsVersion "28.0.3"
+                          defaultConfig {
+                              targetSdkVersion 28
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+
+          echo "Removing conflicting sharedUserId elements from templates..."
+          find . -type f -name "AndroidManifest.xml" -exec sed -i 's/android:sharedUserId="[^"]*"//g' {} +
+          find . -type f -name "AndroidManifest.xml" -exec sed -i 's/android:sharedUserLabel="[^"]*"//g' {} +
+
+          echo "Overriding internal file system environments..."
+          find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" -o -name "*.sh" \) -exec sed -i 's/\/data\/data\/com\.termux/\/data\/data\/com\.termux\.custom/g' {} +
+
+          echo "Updating runtime constants..."
+          find . -type f \( -name "TermuxConstants.java" -o -name "TermuxConstants.kt" -o -name "termux.properties" \) -exec sed -i 's/"com\.termux"/"com\.termux\.custom"/g' {} +
+          find . -type f -name "strings.xml" -exec sed -i 's/>com\.termux</>com\.termux\.custom</g' {} +
+
+          echo "Compiler configuration locked to native API 28 compilation."
