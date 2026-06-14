@@ -4,7 +4,6 @@
           find . -type f -name "gradle.properties" -exec sed -i 's/com\.termux/com\.termux\.custom/g' {} +
 
           echo "Injecting Absolute Compile-Time SDK Constraints with Namespace..."
-          # This rewrites the app module build configurations with the explicit namespace parameter
           cat << 'EOF' > app/build.gradle
           apply plugin: 'com.android.application'
 
@@ -34,19 +33,16 @@
               }
           }
 
-          // FORCE EXECUTION WAIVER: Loop through every single module, submodule, 
-          // and upstream library dependency before tasks are constructed.
           allprojects {
               configurations.all {
                   resolutionStrategy.eachDependency { DependencyResolveDetails details ->
-                      // Intercept dependency logic if needed
+                      // Keep custom dependency locks level
                   }
               }
           }
           EOF
 
           echo "Injecting Global Root Project Level Enforcer..."
-          # Ensure submodules inherit the forced 28 target parameter
           cat << 'EOF' >> build.gradle
 
           subprojects {
